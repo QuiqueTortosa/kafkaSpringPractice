@@ -9,6 +9,7 @@ import reactor.kafka.sender.KafkaSender;
 import reactor.kafka.sender.SenderRecord;
 import reactor.kafka.sender.SenderResult;
 
+import java.time.Duration;
 import java.util.function.Predicate;
 
 public class TransferEventProcessor {
@@ -28,9 +29,10 @@ public class TransferEventProcessor {
     private Mono<SenderResult<String>> sendTransaction(TransferEvent event){
         var senderRecord = this.toSenderRecord(event);
         var manager = this.sender.transactionManager();
+        //esto es lo que hace bajo escena this.sender.sendTransactionally()
         return manager.begin()
                 .then(this.sender.send(senderRecord)
-                        .concatWith(Mono.fromRunnable(event.acknowledge()))
+                        .concatWith(Mono.delay(Duration.ofSeconds(1)).then(Mono.fromRunnable(event.acknowledge()))) //delay for demo porpuses
                         .concatWith(manager.commit())
                         .last())
                 .doOnError(ex -> log.error(ex.getMessage()))
