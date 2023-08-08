@@ -9,7 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.reactive.ReactiveKafkaConsumerTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.kafka.receiver.ReceiverRecord;
 
 import java.time.Duration;
@@ -26,6 +28,8 @@ public class ProductViewEventConsumer {
     private static final Logger log = LoggerFactory.getLogger(ProductViewEventConsumer.class);
     private final ReactiveKafkaConsumerTemplate<String, ProductViewEvent> template;
     private final ProductViewRepository repository;
+    private final Sinks.Many<Integer> sink = Sinks.many().unicast().onBackpressureBuffer();
+    private final Flux<Integer> flux = sink.asFlux();
 
     @PostConstruct
     public void subscribe(){
@@ -36,6 +40,10 @@ public class ProductViewEventConsumer {
                 .bufferTimeout(1000, Duration.ofSeconds(1))
                 .flatMap(this::process)
                 .subscribe();
+    }
+
+    public Flux<Integer> companionFlux(){
+        return this.flux;
     }
 
     private Mono<Void> process(List<ReceiverRecord<String,ProductViewEvent>> events){
@@ -51,6 +59,7 @@ public class ProductViewEventConsumer {
                 .map(dbMap -> eventsMap.keySet().stream().map(productId -> updateViewCount(dbMap,eventsMap,productId)).collect(Collectors.toList()))
                 .flatMapMany(list -> this.repository.saveAll(list))
                 .doOnComplete(() -> events.get(events.size()-1).receiverOffset().acknowledge()) //Con hacer el ack del ultimo mensaje es suficiente
+                .doOnComplete(() -> sink.tryEmitNext(1)) // companionFlux, el valor no importa es solo para notificar que algo se ha procesado
                 .doOnError(ex -> log.error(ex.getMessage()))
                 .then();
         /*

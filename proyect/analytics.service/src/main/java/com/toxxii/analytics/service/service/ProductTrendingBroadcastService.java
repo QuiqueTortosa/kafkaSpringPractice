@@ -16,6 +16,7 @@ import java.util.function.Predicate;
 public class ProductTrendingBroadcastService {
 
     private final ProductViewRepository repository;
+    private final ProductViewEventConsumer consumer;
     private Flux<List<ProductTrendingDto>> trends;
 
     @PostConstruct
@@ -25,8 +26,8 @@ public class ProductTrendingBroadcastService {
                 .collectList()
                 //Esto no deberia estar vacio
                 .filter(Predicate.not(List::isEmpty))
-                //Se repite cada 3s
-                .repeatWhen(l -> l.delayElements(Duration.ofSeconds(3)))
+                //Se repite si se ha procesado 1 dato, aun asi habra 1s de delay por el buffer timeout
+                .repeatWhen(l -> consumer.companionFlux())
                 //Lanzalo si hay algun cambio respecto la ultima vez
                 .distinctUntilChanged()
                 .cache(1); //Con esto lo cacheamos y solo tenemos 1 instancia para todos los usuarios
